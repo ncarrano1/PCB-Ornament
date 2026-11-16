@@ -7,6 +7,7 @@ powered by a CR2477 coin cell.
 |---|---|
 | `blink_one` | Blinks D1 once a second. First bring-up test. |
 | `ring_chase` | Lights one LED at a time around the ring (D1 to D40). Press the button to change speed. |
+| `wave` | A smooth wave of brightness travels clockwise around the ring. Press the button to cycle: slow wave, fast wave, two opposite waves, off. |
 
 ## Setup (macOS)
 
@@ -39,10 +40,26 @@ The programmer is the ST-LINK built into a NUCLEO-L476RG.
 ```bash
 pio run -e blink_one -t upload
 pio run -e ring_chase -t upload
+pio run -e wave -t upload
 ```
 
 Or build with `pio run -e <env>` and flash `.pio/build/<env>/firmware.bin`
 at address `0x08000000` with STM32CubeProgrammer (target STM32F103RB).
+
+## Host test
+
+The wave generator and BCM bit-plane builder are plain C, so they can be
+tested on the Mac without the board:
+
+```bash
+make -C host_test
+```
+
+It checks every position of a full rotation in every mode and confirms that no
+bit-plane ever has more than 20 LEDs on.
+
+Wave shape and speed are set by constants at the top of `src/wave_anim.c`.
+The global brightness cap (`BCM_CAP_Q8`, about 30 %) is in `include/bcm_frame.h`.
 
 ## Important
 
