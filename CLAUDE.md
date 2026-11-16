@@ -12,9 +12,15 @@ real board, so treat them as fixed.
 - PlatformIO, `framework = stm32cube` (ST HAL). One environment per program:
   - `pio run -e blink_one -t upload` (blinks D1)
   - `pio run -e ring_chase -t upload` (one LED at a time around the ring)
+  - `pio run -e wave -t upload` (BCM traveling wave; button cycles modes)
 - To add a program: create `src/<name>.c` with its own `main()`, then add an
   `[env:<name>]` in `platformio.ini` with
-  `build_src_filter = +<board.c> +<name>.c`.
+  `build_src_filter = +<board.c> +<name>.c` (plus any shared modules it uses,
+  e.g. `wave` also lists `led_bcm.c`, `bcm_frame.c`, `wave_anim.c`).
+- Warnings: `build_src_flags = -Wall -Wextra` applies to project sources only
+  (the ST HAL itself has unused-parameter warnings).
+- Host test (no hardware): `make -C host_test`. It checks the wave generator
+  and BCM bit-plane builder never exceed `LED_MAX_ON` in any bit-plane.
 - Programmer: the ST-LINK/V2-1 on a NUCLEO-L476RG (CN2 jumpers removed),
   wired to the ornament's P1 header with jumper wires. The coin cell must be
   in and the slide switch on while flashing; the ST-LINK does not power the board.
@@ -30,8 +36,8 @@ real board, so treat them as fixed.
 - LEDs: Kingbright APHCM2012CGCK-F01 (green, 0805, Vf about 1.9-2.1 V).
   Each LED: GPIO -> 220 ohm -> anode, cathode -> GND. GPIO high = on, about 5 mA.
 - LED order: index 0..39 = D1..D40, clockwise viewed from the LED side,
-  9 degrees apart, D40 at 12 o'clock. Pin map is in `src/board.c` and was
-  checked against the Altium PCB.
+  9 degrees apart, D40 at 12 o'clock. Pin map is in `include/led_pins.h`
+  (used by `board.c` and `bcm_frame.c`) and was checked against the Altium PCB.
 - Button SW1 (Omron B3U-1000P): PB15 to GND. Use the internal pull-up; pressed reads low.
 - BOOT0: 10k pull-down to GND (boots from flash).
 - NRST: on P1 pin 1, but not wired to the programmer.
@@ -80,15 +86,15 @@ few LEDs as the effect needs, and sleep whenever possible.
 
 1. `blink_one` - single LED bring-up test.  (done)
 2. `ring_chase` - one LED at a time; verifies all 40 LEDs and the button.  (done)
-3. Traveling wave: per-LED brightness with timer-interrupt software PWM or
-   binary code modulation (BCM), writing whole ports via BSRR. Respect the
-   per-slice current limit (rule 1).
-4. Mode button: cycle animations/speeds.
+3. Traveling wave: 8-bit BCM on TIM2 at 245 Hz (8 MHz HSI, no PLL),
+   per-plane current limit and 30 % cap in `bcm_frame.c`.  (`wave`; built, awaiting hardware test)
+4. Mode button: slow -> fast -> two waves -> off.  (`wave`; built, awaiting hardware test)
 5. Sleep timer: after about 20 minutes, turn LEDs off and enter Stop mode
    (microamp draw). Wake on the button (EXTI on PB15).
 
 ## Style
 
-- C, ST HAL. Keep hardware access in `board.c`/`board.h`; animation programs
+- C, ST HAL. Keep hardware access in the board layer (`board.c`, `led_bcm.c`
+  and their headers); animation programs
   should only call the board API.
 - Build with `-Wall -Wextra` and keep it warning-free.

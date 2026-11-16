@@ -1,57 +1,21 @@
 /*
  * board.c - PCB Ornament hardware layer
- * Pin map taken from the Altium PCB (R1..R40 feed D1..D40).
+ * Pin map lives in led_pins.h (taken from the Altium PCB).
  */
 #include "board.h"
+#include "led_pins.h"
 
 typedef struct {
     GPIO_TypeDef *port;
     uint16_t pin;
 } led_pin_t;
 
-/* Index 0 = D1 ... index 39 = D40, in ring order. */
+/* Index 0 = D1 ... index 39 = D40, in ring order (see led_pins.h). */
+#define LED_PIN(port, bit) {GPIO##port, GPIO_PIN_##bit},
 static const led_pin_t LEDS[LED_COUNT] = {
-    {GPIOA, GPIO_PIN_0},  /* D1  */
-    {GPIOC, GPIO_PIN_2},  /* D2  */
-    {GPIOA, GPIO_PIN_1},  /* D3  */
-    {GPIOC, GPIO_PIN_3},  /* D4  */
-    {GPIOA, GPIO_PIN_2},  /* D5  */
-    {GPIOC, GPIO_PIN_4},  /* D6  */
-    {GPIOA, GPIO_PIN_3},  /* D7  */
-    {GPIOC, GPIO_PIN_5},  /* D8  */
-    {GPIOA, GPIO_PIN_4},  /* D9  */
-    {GPIOC, GPIO_PIN_6},  /* D10 */
-    {GPIOA, GPIO_PIN_5},  /* D11 */
-    {GPIOC, GPIO_PIN_7},  /* D12 */
-    {GPIOA, GPIO_PIN_6},  /* D13 */
-    {GPIOC, GPIO_PIN_8},  /* D14 */
-    {GPIOA, GPIO_PIN_7},  /* D15 */
-    {GPIOC, GPIO_PIN_9},  /* D16 */
-    {GPIOA, GPIO_PIN_8},  /* D17 */
-    {GPIOC, GPIO_PIN_10}, /* D18 */
-    {GPIOA, GPIO_PIN_9},  /* D19 */
-    {GPIOC, GPIO_PIN_11}, /* D20 */
-    {GPIOA, GPIO_PIN_10}, /* D21 */
-    {GPIOC, GPIO_PIN_12}, /* D22 */
-    {GPIOA, GPIO_PIN_11}, /* D23 */
-    {GPIOB, GPIO_PIN_0},  /* D24 */
-    {GPIOA, GPIO_PIN_12}, /* D25 */
-    {GPIOB, GPIO_PIN_1},  /* D26 */
-    {GPIOA, GPIO_PIN_15}, /* D27 - JTDI after reset, freed in board_init */
-    {GPIOB, GPIO_PIN_2},  /* D28 - also BOOT1, fine as output */
-    {GPIOC, GPIO_PIN_0},  /* D29 */
-    {GPIOB, GPIO_PIN_3},  /* D30 - JTDO after reset, freed in board_init */
-    {GPIOC, GPIO_PIN_1},  /* D31 */
-    {GPIOB, GPIO_PIN_4},  /* D32 - NJTRST after reset, freed in board_init */
-    {GPIOB, GPIO_PIN_8},  /* D33 */
-    {GPIOB, GPIO_PIN_5},  /* D34 */
-    {GPIOB, GPIO_PIN_9},  /* D35 */
-    {GPIOB, GPIO_PIN_6},  /* D36 */
-    {GPIOB, GPIO_PIN_10}, /* D37 */
-    {GPIOB, GPIO_PIN_7},  /* D38 */
-    {GPIOB, GPIO_PIN_11}, /* D39 */
-    {GPIOB, GPIO_PIN_12}, /* D40 */
+    LED_PIN_MAP
 };
+#undef LED_PIN
 
 #define BUTTON_PORT GPIOB
 #define BUTTON_PIN  GPIO_PIN_15
