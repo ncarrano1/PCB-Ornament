@@ -1,41 +1,48 @@
 /*
- * mode_candle.c - 8. Candle: the whole ring flickers like a flame.
- * Smooth random flicker in overall brightness, an occasional gust, small
- * per-LED variation, brighter at the bottom and dimmer at the top.
+ * mode_candle.c - 8. Candle: the ring is a flame. It is always lit at the
+ * bottom (the wick); the flame's height jumps around, it leans side to
+ * side, its brightness flutters, and now and then a gust knocks it down.
+ * Brighter at the bottom, dimmer and more restless at the top.
  */
 #include "mode.h"
 #include "fx.h"
 
 /* ---- Tweakable ------------------------------------------------------- */
-#define CANDLE_LEVEL      210   /* overall brightness, 0..255 */
-#define CANDLE_FLOOR_PCT  55    /* slow flicker swings between this and 100 % */
-#define CANDLE_SLOW_MIN   90    /* slow flicker: ms per random target */
-#define CANDLE_SLOW_MAX   260
-#define CANDLE_FAST_PCT   12    /* fast jitter depth, % */
-#define CANDLE_FAST_MIN   30
-#define CANDLE_FAST_MAX   70
-#define CANDLE_LED_PCT    10    /* per-LED variation, % */
-#define CANDLE_LED_MIN    120
-#define CANDLE_LED_MAX    320
-#define CANDLE_TOP_PCT    35    /* brightness at the top relative to the bottom */
-#define CANDLE_GUST_MIN   4000  /* time between gusts */
-#define CANDLE_GUST_MAX   11000
-#define CANDLE_GUST_DIP   45    /* brightness at the bottom of a gust, % */
-#define CANDLE_GUST_DOWN  90    /* ms to dip */
-#define CANDLE_GUST_UP    600   /* ms to recover */
+#define CANDLE_PEAK        235  /* brightness at the base of the flame */
+#define CANDLE_FLOOR_PCT   22   /* ember glow left around the rest of the ring */
+#define FLAME_H_MIN_DEG    55   /* flame reaches this far up from the bottom... */
+#define FLAME_H_MAX_DEG    165  /* ...up to this far */
+#define FLAME_H_MIN_MS     50   /* flame height: ms per random target */
+#define FLAME_H_MAX_MS     160
+#define FLAME_LEAN_DEG     28   /* max lean left/right */
+#define FLAME_LEAN_MIN_MS  180
+#define FLAME_LEAN_MAX_MS  480
+#define FLICKER_MIN_PCT    40   /* brightness flutters between this and 100 % */
+#define FLICKER_MIN_MS     35
+#define FLICKER_MAX_MS     110
+#define CANDLE_LED_PCT     12   /* per-LED shimmer, % */
+#define CANDLE_LED_MIN_MS  90
+#define CANDLE_LED_MAX_MS  260
+#define GUST_MIN_MS        3000 /* time between gusts */
+#define GUST_MAX_MS        8000
+#define GUST_DOWN_MS       70   /* flame knocked down... */
+#define GUST_UP_MS         550  /* ...and recovering */
+#define GUST_HEIGHT_DEG    35   /* flame height at the bottom of a gust */
+#define GUST_DIM_PCT       45   /* brightness at the bottom of a gust */
 /* ---------------------------------------------------------------------- */
 
-/* Value noise: glide smoothly from one random target to the next. */
+#define DEG(d) ((int32_t)RING_POS * (d) / 360)
+
+/* Value noise: glide smoothly from one random target (0..65535) to the next. */
 typedef struct {
-    uint16_t from, to;  /* 0..65535 */
-    uint16_t t, dur;    /* ms */
+    uint16_t from, to;
+    uint16_t t, dur;
 } noise_t;
 
-static noise_t slow, fast, led[RING_LEDS];
+static noise_t n_height, n_lean, n_flicker, n_led[RING_LEDS];
 static uint32_t rng;
 static int32_t gust_wait;
-static uint32_t gust_t;     /* ms into a gust, 0 = none */
-static uint8_t grad[RING_LEDS];
+static uint32_t gust_t; /* ms into a gust, 0 = none */
 
 static void noise_next(noise_t *n, uint32_t dmin, uint32_t dmax)
 {
@@ -45,7 +52,14 @@ static void noise_next(noise_t *n, uint32_t dmin, uint32_t dmax)
     n->dur = (uint16_t)xs_range(&rng, dmin, dmax);
 }
 
-static uint16_t noise_step(noise_t *n, uint32_t dt, uint32_t dmin, uint32_t dmax)
+static void noise_init(noise_t *n, uint32_t dmin, uint32_t dmax)
+{
+    n->to = (uint16_t)xs32(&rng);
+    noise_next(n, dmin, dmax);
+    n->t = (uint16_t)xs_range(&rng, 0, n->dur - 1U);
+}
+
+static uint32_t noise_step(noise_t *n, uint32_t dt, uint32_t dmin, uint32_t dmax)
 {
     n->t = (uint16_t)(n->t + dt);
     while (n->t >= n->dur) {
@@ -53,66 +67,83 @@ static uint16_t noise_step(noise_t *n, uint32_t dt, uint32_t dmin, uint32_t dmax
         noise_next(n, dmin, dmax);
         n->t = over;
     }
-    uint32_t a = smooth16((uint16_t)(((uint32_t)n->t * 65535U) / n->dur));
-    return (uint16_t)(n->from + (((int32_t)n->to - n->from) * (int32_t)(a >> 1)) / 32768);
+    int32_t a = smooth16((uint16_t)(((uint32_t)n->t * 65535U) / n->dur)) >> 1; /* Q15 */
+    return (uint32_t)(n->from + (((int32_t)n->to - n->from) * a) / 32768);
 }
 
 static void init(uint32_t seed)
 {
     rng = xs_seed(seed);
-    slow.to = 50000;
-    fast.to = 32768;
-    noise_next(&slow, CANDLE_SLOW_MIN, CANDLE_SLOW_MAX);
-    noise_next(&fast, CANDLE_FAST_MIN, CANDLE_FAST_MAX);
+    noise_init(&n_height, FLAME_H_MIN_MS, FLAME_H_MAX_MS);
+    noise_init(&n_lean, FLAME_LEAN_MIN_MS, FLAME_LEAN_MAX_MS);
+    noise_init(&n_flicker, FLICKER_MIN_MS, FLICKER_MAX_MS);
     for (int i = 0; i < RING_LEDS; i++) {
-        led[i].to = (uint16_t)xs32(&rng);
-        noise_next(&led[i], CANDLE_LED_MIN, CANDLE_LED_MAX);
-        led[i].t = (uint16_t)xs_range(&rng, 0, led[i].dur - 1U);
-        /* Height gradient: 100 % at the bottom, CANDLE_TOP_PCT at the top. */
-        uint32_t down = (uint32_t)(32767 - height(i)) / 2U; /* 0 top .. 32767 bottom */
-        grad[i] = (uint8_t)(255U * (CANDLE_TOP_PCT * 32767U + (100U - CANDLE_TOP_PCT) * down)
-                            / (100U * 32767U));
+        noise_init(&n_led[i], CANDLE_LED_MIN_MS, CANDLE_LED_MAX_MS);
     }
-    gust_wait = (int32_t)xs_range(&rng, CANDLE_GUST_MIN, CANDLE_GUST_MAX);
+    gust_wait = (int32_t)xs_range(&rng, GUST_MIN_MS / 2, GUST_MAX_MS);
     gust_t = 0;
+}
+
+/* Gust strength 0..65535: quick knock-down, slower recovery. */
+static uint32_t gust_step(uint32_t dt)
+{
+    if (gust_t == 0) {
+        gust_wait -= (int32_t)dt;
+        if (gust_wait > 0) return 0;
+        gust_t = 1;
+    }
+    uint32_t g;
+    if (gust_t < GUST_DOWN_MS) {
+        g = smooth16((uint16_t)(gust_t * 65535U / GUST_DOWN_MS));
+    } else if (gust_t < GUST_DOWN_MS + GUST_UP_MS) {
+        g = 65535U - smooth16((uint16_t)((gust_t - GUST_DOWN_MS) * 65535U / GUST_UP_MS));
+    } else {
+        gust_t = 0;
+        gust_wait = (int32_t)xs_range(&rng, GUST_MIN_MS, GUST_MAX_MS);
+        return 0;
+    }
+    gust_t += dt;
+    return g;
 }
 
 static void update(uint32_t frame_ms, uint8_t out[RING_LEDS])
 {
-    /* Slow flicker: FLOOR..100 %. Fast jitter: +-FAST/2 %. Q16. */
-    uint32_t s = noise_step(&slow, frame_ms, CANDLE_SLOW_MIN, CANDLE_SLOW_MAX);
-    uint32_t level = (CANDLE_FLOOR_PCT * 65535U + (100U - CANDLE_FLOOR_PCT) * s) / 100U;
-    uint32_t f = noise_step(&fast, frame_ms, CANDLE_FAST_MIN, CANDLE_FAST_MAX);
-    uint32_t jitter = 65536U - CANDLE_FAST_PCT * 65536U / 200U + (CANDLE_FAST_PCT * f) / 100U;
-    level = (uint32_t)(((uint64_t)level * jitter) >> 16); /* can exceed 32 bits */
-    if (level > 65535U) level = 65535U;
+    uint32_t g = gust_step(frame_ms);
 
-    /* Gust: quick dip, slow recovery. */
-    if (gust_t == 0) {
-        gust_wait -= (int32_t)frame_ms;
-        if (gust_wait <= 0) gust_t = 1;
-    }
-    if (gust_t) {
-        uint32_t depth; /* 0 = no dip, 65535 = full dip */
-        if (gust_t < CANDLE_GUST_DOWN) {
-            depth = smooth16((uint16_t)(gust_t * 65535U / CANDLE_GUST_DOWN));
-        } else if (gust_t < CANDLE_GUST_DOWN + CANDLE_GUST_UP) {
-            depth = 65535U - smooth16((uint16_t)((gust_t - CANDLE_GUST_DOWN) * 65535U / CANDLE_GUST_UP));
-        } else {
-            depth = 0;
-            gust_t = 0;
-            gust_wait = (int32_t)xs_range(&rng, CANDLE_GUST_MIN, CANDLE_GUST_MAX);
-        }
-        if (gust_t) gust_t += frame_ms;
-        level = level * (65536U - depth * (100U - CANDLE_GUST_DIP) / 100U) >> 16;
-    }
+    /* Flame height (ring units from the bottom), pulled down by gusts. */
+    uint32_t hn = noise_step(&n_height, frame_ms, FLAME_H_MIN_MS, FLAME_H_MAX_MS);
+    int32_t h = DEG(FLAME_H_MIN_DEG) + (int32_t)(((int64_t)(DEG(FLAME_H_MAX_DEG) - DEG(FLAME_H_MIN_DEG)) * hn) >> 16);
+    h -= (int32_t)(((int64_t)(h - DEG(GUST_HEIGHT_DEG)) * g) >> 16);
+
+    /* Lean: shifts the flame toward one side. */
+    int32_t ln = (int32_t)noise_step(&n_lean, frame_ms, FLAME_LEAN_MIN_MS, FLAME_LEAN_MAX_MS) - 32768;
+    int32_t lean = (DEG(FLAME_LEAN_DEG) * ln) / 32768;
+
+    /* Brightness flutter, dimmed by gusts. Q16. */
+    uint32_t fn = noise_step(&n_flicker, frame_ms, FLICKER_MIN_MS, FLICKER_MAX_MS);
+    uint32_t bright = (FLICKER_MIN_PCT * 65535U + (100U - FLICKER_MIN_PCT) * fn) / 100U;
+    bright = (uint32_t)(((uint64_t)bright * (65536U - g * (100U - GUST_DIM_PCT) / 100U)) >> 16);
 
     for (int i = 0; i < RING_LEDS; i++) {
-        uint32_t n = noise_step(&led[i], frame_ms, CANDLE_LED_MIN, CANDLE_LED_MAX);
-        uint32_t var = 65536U - CANDLE_LED_PCT * 65536U / 200U + (CANDLE_LED_PCT * n) / 100U;
-        uint32_t v = (CANDLE_LEVEL * level) >> 16;
-        v = (v * var) >> 16;
-        v = (v * grad[i]) / 255U;
+        /* Signed distance from the bottom along the ring: <0 right side, >0 left. */
+        int32_t d = (int32_t)ring_led_pos(i) - RING_POS_BOTTOM - lean;
+        uint32_t ad = (uint32_t)(d < 0 ? -d : d);
+
+        /* Flame profile: full at the base, smooth falloff to the tip at h. */
+        uint32_t core = 0;
+        if (ad < (uint32_t)h) {
+            core = 65535U - smooth16((uint16_t)(ad * 65535U / (uint32_t)h));
+        }
+        uint32_t lvl = CANDLE_FLOOR_PCT * 65535U / 100U +
+                       (uint32_t)(((uint64_t)(100U - CANDLE_FLOOR_PCT) * core) / 100U);
+
+        uint32_t sh = noise_step(&n_led[i], frame_ms, CANDLE_LED_MIN_MS, CANDLE_LED_MAX_MS);
+        uint32_t shimmer = 65536U - CANDLE_LED_PCT * 65536U / 200U + (CANDLE_LED_PCT * sh) / 100U;
+
+        uint64_t v = (uint64_t)CANDLE_PEAK * lvl;
+        v = (v * bright) >> 16;
+        v = (v * shimmer) >> 16;
+        v >>= 16;
         out[i] = (uint8_t)(v > 255U ? 255U : v);
     }
 }
