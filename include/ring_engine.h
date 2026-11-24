@@ -24,6 +24,12 @@ void ring_engine_submit(const uint8_t bright[RING_LEDS]);
 /* Sleep the CPU until the next interrupt. */
 void ring_engine_idle(void);
 
+/*
+ * Read the CPU cycle counter. Re-enables it every call: debuggers (e.g.
+ * STM32CubeProgrammer) clear the trace enable bit when they disconnect.
+ */
+uint32_t ring_engine_cycles(void);
+
 /* Worst-case cycles spent building a frame (gamma + planes), for profiling. */
 extern volatile uint32_t g_build_cycles_max;
 

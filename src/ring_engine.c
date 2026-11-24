@@ -74,6 +74,13 @@ static void clear_frame(ring_frame_t *f)
     }
 }
 
+uint32_t ring_engine_cycles(void)
+{
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+    return DWT->CYCCNT;
+}
+
 void ring_engine_start(void)
 {
     if (running) {
@@ -88,10 +95,6 @@ void ring_engine_start(void)
 
     /* Keep SWD reachable while the CPU sleeps in WFI (NRST isn't wired). */
     DBGMCU->CR |= DBGMCU_CR_DBG_SLEEP;
-
-    /* Cycle counter for frame-time profiling. */
-    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
-    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 
     __HAL_RCC_TIM2_CLK_ENABLE();
     TIM2->CR1 = TIM_CR1_ARPE | TIM_CR1_URS;
@@ -134,11 +137,11 @@ void ring_engine_submit(const uint8_t bright[RING_LEDS])
     while (pending) {
         __WFI();
     }
-    uint32_t t0 = DWT->CYCCNT;
+    uint32_t t0 = ring_engine_cycles();
     uint8_t code[RING_LEDS];
     ring_codes(bright, code);
     ring_build(code, &frames[front ^ 1U]);
-    uint32_t dt = DWT->CYCCNT - t0;
+    uint32_t dt = ring_engine_cycles() - t0;
     if (dt > g_build_cycles_max) {
         g_build_cycles_max = dt;
     }

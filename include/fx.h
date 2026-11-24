@@ -80,6 +80,14 @@ void fx_point(fx_buf_t buf, uint32_t pos, uint8_t v);
 /* A raised-cosine blob of half-width `radius` (ring units), peak v. */
 void fx_blob(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v);
 
+/* Same blob, but raises LEDs to the blob instead of adding (no build-up
+ * where copies overlap, e.g. motion-blur samples). */
+void fx_blob_max(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v);
+
+/* Attack/decay envelope: 0 before t = 0, smooth rise over attack_ms, then
+ * exp(-(t - attack) / decay_ms). Returns 0..65535. */
+uint16_t fx_envelope(int32_t t_ms, uint32_t attack_ms, uint32_t decay_ms);
+
 /*
  * A comet: head at `head` moving clockwise (dir > 0) or counter-clockwise
  * (dir < 0), with a tail fading as exp(-distance / tail_leds), cut off

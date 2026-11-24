@@ -15,7 +15,7 @@ volatile uint32_t g_frame_cycles_max;
 int main(void)
 {
     board_init();
-    ring_engine_start(); /* also enables the DWT cycle counter */
+    ring_engine_start();
 
     core_init(0x0E7A2024U, 0);
 
@@ -35,9 +35,9 @@ int main(void)
             if ((int32_t)(now - next_frame) > 100) {
                 next_frame = now; /* fell far behind: don't spin catching up */
             }
-            uint32_t t0 = DWT->CYCCNT;
+            uint32_t t0 = ring_engine_cycles();
             core_frame(out);
-            uint32_t dt = DWT->CYCCNT - t0;
+            uint32_t dt = ring_engine_cycles() - t0;
             if (dt > g_frame_cycles_max) {
                 g_frame_cycles_max = dt;
             }

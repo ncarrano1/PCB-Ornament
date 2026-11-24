@@ -95,7 +95,7 @@ void fx_point(fx_buf_t buf, uint32_t pos, uint8_t v)
     fx_add(buf, ring_led_at(n + 1), scale8(v, TBL_INV_GAMMA[f]));
 }
 
-void fx_blob(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v)
+static void blob(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v, int use_max)
 {
     if (radius == 0) {
         return;
@@ -109,8 +109,34 @@ void fx_blob(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v)
         uint16_t a = (uint16_t)((d * 32768U) / radius);
         int32_t c = cos16(a); /* Q15 */
         uint32_t shape = (uint32_t)(c + 32768) >> 1; /* 0..32767 */
-        fx_add(buf, i, (v * shape + 16384U) >> 15);
+        uint32_t val = (v * shape + 16384U) >> 15;
+        if (use_max) {
+            fx_max(buf, i, val);
+        } else {
+            fx_add(buf, i, val);
+        }
     }
+}
+
+void fx_blob(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v)
+{
+    blob(buf, pos, radius, v, 0);
+}
+
+void fx_blob_max(fx_buf_t buf, uint32_t pos, uint32_t radius, uint8_t v)
+{
+    blob(buf, pos, radius, v, 1);
+}
+
+uint16_t fx_envelope(int32_t t_ms, uint32_t attack_ms, uint32_t decay_ms)
+{
+    if (t_ms <= 0) {
+        return 0;
+    }
+    if ((uint32_t)t_ms < attack_ms) {
+        return smooth16((uint16_t)(((uint32_t)t_ms * 65535U) / attack_ms));
+    }
+    return exp_neg(((uint32_t)t_ms - attack_ms) * 256U / decay_ms);
 }
 
 void fx_out(const fx_buf_t buf, uint8_t out[RING_LEDS])
