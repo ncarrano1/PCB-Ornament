@@ -6,3 +6,5 @@
 *.map
 .DS_Store
 host_test/test_wave
+host_test/test_ornament
+host_test/render
