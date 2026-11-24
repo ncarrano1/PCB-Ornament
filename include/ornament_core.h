@@ -22,6 +22,9 @@ uint8_t core_mode(void);
 /* Stir extra entropy into future seeds (e.g. button-press timing). */
 void core_stir(uint32_t entropy);
 
+/* Show the battery gauge (0..100 %), then fade into the current mode. */
+void core_show_gauge(uint8_t pct);
+
 /* Advance one CORE_FRAME_MS step and write perceptual brightness. */
 void core_frame(uint8_t out[RING_LEDS]);
 

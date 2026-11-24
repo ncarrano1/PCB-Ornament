@@ -2,6 +2,7 @@
  * render.c - dump a mode's duty codes for the GIF preview.
  *   render <mode 1..N> <milliseconds> [skip_ms]  -> stdout: 40 bytes per frame
  *     (skip_ms: run that long first without output, to preview later parts)
+ *   render --gauge <percent> <milliseconds>       -> battery gauge, then mode 1
  *   render --list                       -> mode names, one per line
  * Codes are what the engine would actually drive (gamma + cap applied).
  */
@@ -17,6 +18,17 @@ int main(int argc, char **argv)
     if (argc == 2 && strcmp(argv[1], "--list") == 0) {
         printf("%d %d\n", RING_CAP_CODE, CORE_FRAME_MS);
         for (int m = 0; m < MODE_COUNT; m++) printf("%s\n", MODES[m]->name);
+        return 0;
+    }
+    if (argc == 4 && strcmp(argv[1], "--gauge") == 0) {
+        uint8_t out[RING_LEDS], code[RING_LEDS];
+        core_init(2024, 0);
+        core_show_gauge((uint8_t)atoi(argv[2]));
+        for (int t = 0; t < atoi(argv[3]); t += CORE_FRAME_MS) {
+            core_frame(out);
+            ring_codes(out, code);
+            fwrite(code, 1, RING_LEDS, stdout);
+        }
         return 0;
     }
     if (argc != 3 && argc != 4) {

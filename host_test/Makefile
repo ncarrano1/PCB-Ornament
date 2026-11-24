@@ -4,7 +4,8 @@ CFLAGS = -std=c11 -O2 -Wall -Wextra -Werror -I../include
 
 WAVE_SRCS = ../src/bcm_frame.c ../src/wave_anim.c
 ORN_SRCS  = ../src/ring_frame.c ../src/tables.c ../src/ornament_core.c \
-            ../src/button_fsm.c $(wildcard ../src/modes/*.c)
+            ../src/button_fsm.c ../src/gauge.c ../src/mode_store.c \
+            $(wildcard ../src/modes/*.c)
 HDRS      = $(wildcard ../include/*.h)
 
 .PHONY: test clean

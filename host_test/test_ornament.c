@@ -17,6 +17,8 @@
 #include "mode.h"
 #include "ornament_core.h"
 #include "button_fsm.h"
+#include "gauge.h"
+#include "mode_store.h"
 
 static int failures;
 #define CHECK(cond, ...)                                                   \
@@ -197,36 +199,123 @@ static void test_geometry(void)
     printf("  geometry: angle_from_top, height, mirror OK\n");
 }
 
+/* Feed the button FSM `pressed` for `ms` milliseconds; count events. */
+static int ev_count[4];
+static uint32_t bt;
+static void hold(btn_t *b, int pressed, uint32_t ms)
+{
+    for (uint32_t k = 0; k < ms; k++, bt++) ev_count[btn_update(b, pressed != 0, bt)]++;
+}
+static void bounce(btn_t *b, int to)
+{
+    for (int k = 0; k < 6; k++, bt++) ev_count[btn_update(b, (k & 1) ? to : !to, bt)]++;
+}
+static void reset_counts(void) { memset(ev_count, 0, sizeof(ev_count)); }
+
 static void test_button(void)
 {
     btn_t b;
-    uint32_t t = 0;
-    int shorts = 0, longs = 0;
-    btn_init(&b, false, t);
-    /* short press with contact bounce */
-    for (int k = 0; k < 6; k++) btn_update(&b, k & 1, t++);
-    for (; t < 200; t++) shorts += btn_update(&b, true, t) == BTN_SHORT;
-    for (; t < 300; t++) shorts += btn_update(&b, false, t) == BTN_SHORT;
-    CHECK(shorts == 1, "short press: %d events", shorts);
+    bt = 0;
+    btn_init(&b, false, bt);
+
+    /* single short press (with contact bounce): SHORT once the double window passes */
+    reset_counts();
+    bounce(&b, 1); hold(&b, 1, 150); bounce(&b, 0); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_SHORT] == 1 && ev_count[BTN_DOUBLE] == 0 && ev_count[BTN_LONG] == 0,
+          "short: %d short %d double %d long", ev_count[BTN_SHORT], ev_count[BTN_DOUBLE], ev_count[BTN_LONG]);
+
+    /* double press: DOUBLE only, no SHORT */
+    reset_counts();
+    hold(&b, 1, 120); hold(&b, 0, 150); hold(&b, 1, 120); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_DOUBLE] == 1 && ev_count[BTN_SHORT] == 0,
+          "double: %d double %d short", ev_count[BTN_DOUBLE], ev_count[BTN_SHORT]);
+
+    /* two presses too far apart: two SHORTs */
+    reset_counts();
+    hold(&b, 1, 120); hold(&b, 0, 600); hold(&b, 1, 120); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_SHORT] == 2 && ev_count[BTN_DOUBLE] == 0,
+          "slow pair: %d short %d double", ev_count[BTN_SHORT], ev_count[BTN_DOUBLE]);
+
     /* long press: LONG once while held, nothing on release */
-    shorts = 0;
-    for (; t < 1500; t++) {
-        btn_event_t e = btn_update(&b, true, t);
-        longs += e == BTN_LONG;
-        shorts += e == BTN_SHORT;
-    }
-    for (; t < 1600; t++) shorts += btn_update(&b, false, t) == BTN_SHORT;
-    CHECK(longs == 1 && shorts == 0, "long press: %d long, %d short", longs, shorts);
+    reset_counts();
+    hold(&b, 1, 1500); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_LONG] == 1 && ev_count[BTN_SHORT] == 0 && ev_count[BTN_DOUBLE] == 0,
+          "long: %d long %d short", ev_count[BTN_LONG], ev_count[BTN_SHORT]);
+
+    /* short then long: the short is dropped in favour of the long (sleep) */
+    reset_counts();
+    hold(&b, 1, 120); hold(&b, 0, 150); hold(&b, 1, 1500); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_LONG] == 1 && ev_count[BTN_SHORT] == 0 && ev_count[BTN_DOUBLE] == 0,
+          "short+long: %d long %d short %d double", ev_count[BTN_LONG], ev_count[BTN_SHORT], ev_count[BTN_DOUBLE]);
+
     /* wake press: already down at init -> ignored entirely */
-    btn_init(&b, true, t);
-    longs = shorts = 0;
-    for (int k = 0; k < 2000; k++, t++) {
-        btn_event_t e = btn_update(&b, k < 1500, t);
-        longs += e == BTN_LONG;
-        shorts += e == BTN_SHORT;
+    btn_init(&b, true, bt);
+    reset_counts();
+    hold(&b, 1, 1500); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_LONG] + ev_count[BTN_SHORT] + ev_count[BTN_DOUBLE] == 0,
+          "wake press not ignored");
+    /* ...and the next press after it works normally */
+    reset_counts();
+    hold(&b, 1, 120); hold(&b, 0, 600);
+    CHECK(ev_count[BTN_SHORT] == 1, "press after wake: %d short", ev_count[BTN_SHORT]);
+    printf("  button: debounce, short, double, long, short+long, ignored wake press OK\n");
+}
+
+static void test_store(void)
+{
+    uint16_t page[512];
+    const int n = 512;
+    memset(page, 0xFF, sizeof(page));
+    CHECK(store_latest(page, n, 20) == -1, "empty page should have no mode");
+    CHECK(store_next_slot(page, n) == 0, "empty page: first slot not 0");
+
+    page[0] = store_record(5);
+    page[1] = store_record(12);
+    CHECK(store_latest(page, n, 20) == 12, "latest should be 12");
+    CHECK(store_next_slot(page, n) == 2, "next slot should be 2");
+
+    page[2] = 0xA5FE;  /* mode 254: out of range -> fall back to mode 1 */
+    CHECK(store_latest(page, n, 20) == -1, "invalid newest record should give -1");
+    CHECK(store_next_slot(page, n) == 3, "next slot after invalid should be 3");
+    page[3] = 0x1203;  /* torn/garbage write */
+    CHECK(store_latest(page, n, 20) == -1, "garbage newest record should give -1");
+    page[4] = store_record(7);  /* a good save afterwards is used again */
+    CHECK(store_latest(page, n, 20) == 7, "valid record after garbage not used");
+
+    for (int i = 0; i < n; i++) page[i] = store_record((uint8_t)(i % 20));
+    CHECK(store_next_slot(page, n) == -1, "full page should need an erase");
+    CHECK(store_latest(page, n, 20) == (n - 1) % 20, "latest of a full page wrong");
+    CHECK(store_latest(page, n, 3) == -1, "stored mode beyond count should fall back");
+    printf("  mode store: append, invalid/torn newest record -> mode 1, full-page erase OK\n");
+}
+
+static void test_gauge(void)
+{
+    CHECK(gauge_percent(3300) == 100 && gauge_percent(2000) == 0, "gauge ends wrong");
+    int prev = 101;
+    for (uint32_t mv = 3300; mv >= 2400; mv -= 10) {
+        int p = gauge_percent(mv);
+        CHECK(p <= prev, "gauge not monotonic at %u mV", mv);
+        prev = p;
     }
-    CHECK(longs == 0 && shorts == 0, "wake press not ignored: %d long, %d short", longs, shorts);
-    printf("  button: debounce, short, long, and ignored wake press OK\n");
+    uint8_t out[RING_LEDS], code[RING_LEDS];
+    ring_frame_t f;
+    int max_on = 0;
+    for (int pct = 0; pct <= 100; pct += 5) {
+        core_init(1, 3);
+        core_show_gauge((uint8_t)pct);
+        for (int n = 0; n < 200; n++) {
+            core_frame(out);
+            ring_codes(out, code);
+            ring_build(code, &f);
+            int w = check_frame(code, &f, "gauge", n);
+            if (w > max_on) max_on = w;
+        }
+        CHECK(core_mode() == 3, "gauge changed the mode");
+    }
+    /* After the gauge, output must match the mode running alone. */
+    printf("  gauge: %u mV->%u%%, %u mV->%u%%, %u mV->%u%%; frames within budget (max %d/slice)\n",
+           3240, gauge_percent(3240), 3000, gauge_percent(3000), 2700, gauge_percent(2700), max_on);
 }
 
 int main(void)
@@ -239,6 +328,8 @@ int main(void)
     test_modes();
     test_crossfades();
     test_button();
+    test_store();
+    test_gauge();
     if (failures) {
         printf("FAILED: %d check(s)\n", failures);
         return 1;

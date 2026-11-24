@@ -95,6 +95,12 @@ def render_mode(num, name, cap, frame_ms):
     start, seconds = TIMING.get(name, TIMING["default"])
     raw = subprocess.run([RENDER, str(num), str(seconds * 1000), str(start * 1000)],
                          check=True, capture_output=True).stdout
+    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    path, n = write_gif(raw, cap, frame_ms, f"{num:02d}_{slug}.gif")
+    return path, n, seconds
+
+
+def write_gif(raw, cap, frame_ms, filename):
     frames = [raw[k:k + LEDS] for k in range(0, len(raw), LEDS)]
     images, durations = [], []
     t = 0.0
@@ -107,18 +113,29 @@ def render_mode(num, name, cap, frame_ms):
         t_next = t + frame_ms * SAMPLE
         durations.append(int(t_next // 10 * 10 - t // 10 * 10))
         t = t_next
-    slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-    path = os.path.join(OUT_DIR, f"{num:02d}_{slug}.gif")
+    path = os.path.join(OUT_DIR, filename)
     images[0].save(path, save_all=True, append_images=images[1:], duration=durations,
                    loop=0, optimize=True)
-    return path, len(images), seconds
+    return path, len(images)
+
+
+def render_gauge(pct, cap, frame_ms, seconds=4):
+    raw = subprocess.run([RENDER, "--gauge", str(pct), str(seconds * 1000)], check=True,
+                         capture_output=True).stdout
+    return write_gif(raw, cap, frame_ms, f"00_battery_gauge_{pct:02d}.gif"), seconds
 
 
 def main():
     build_renderer()
     cap, frame_ms, names = mode_list()
-    want = {int(a) for a in sys.argv[1:]} or set(range(1, len(names) + 1))
+    args = sys.argv[1:]
     os.makedirs(OUT_DIR, exist_ok=True)
+    if args == ["gauge"]:
+        for pct in (85, 15):
+            (path, n), secs = render_gauge(pct, cap, frame_ms)
+            print(f"{os.path.relpath(path, ROOT)}: {n} frames, {secs} s, {os.path.getsize(path) // 1024} KB")
+        return
+    want = {int(a) for a in args} or set(range(1, len(names) + 1))
     for num, name in enumerate(names, 1):
         if num in want:
             path, n, secs = render_mode(num, name, cap, frame_ms)
