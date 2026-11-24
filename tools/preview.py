@@ -30,11 +30,11 @@ TIMING = {
     "lightning": (0, 14),
     "fireflies": (0, 18),     # out of sync at first, then in unison
 }
-SIZE = 200                 # GIF width/height, px
-RING_R = 80                # ring radius, px
-DOT_R = 5                  # LED radius, px
-LEVELS = 48                # intensity steps in the GIF palette (smaller files)
-SAMPLE = 2                 # keep every 2nd frame (16 ms * 2 = 32 ms)
+SIZE = 160                 # GIF width/height, px
+RING_R = 64                # ring radius, px
+DOT_R = 4                  # LED radius, px
+LEVELS = 32                # intensity steps in the GIF palette (smaller files)
+SAMPLE = 3                 # keep every 3rd frame (16 ms * 3 = 48 ms, ~21 fps)
 LEDS = 40
 
 
@@ -109,7 +109,7 @@ def write_gif(raw, cap, frame_ms, filename):
         img = frame_image(frames[n], cap).convert("P")
         img.putpalette(pal)
         images.append(img)
-        # GIF delays are in 10 ms units: alternate 30/40 ms to stay real time.
+        # GIF delays are in 10 ms units: round so the total stays real time.
         t_next = t + frame_ms * SAMPLE
         durations.append(int(t_next // 10 * 10 - t // 10 * 10))
         t = t_next
