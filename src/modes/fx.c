@@ -139,6 +139,23 @@ uint16_t fx_envelope(int32_t t_ms, uint32_t attack_ms, uint32_t decay_ms)
     return exp_neg(((uint32_t)t_ms - attack_ms) * 256U / decay_ms);
 }
 
+void fx_arc(fx_buf_t buf, uint32_t center, uint32_t half, uint8_t v)
+{
+    for (int i = 0; i < RING_LEDS; i++) {
+        uint32_t d = ring_dist(ring_led_pos(i), center % RING_POS);
+        /* LED i covers [d - 128, d + 128]; the arc covers [0, half]. */
+        int32_t cover = (int32_t)half + RING_POS_PER_LED / 2 - (int32_t)d;
+        if (cover <= 0) {
+            continue;
+        }
+        if (cover >= RING_POS_PER_LED) {
+            fx_max(buf, i, v);
+        } else {
+            fx_max(buf, i, scale8(v, TBL_INV_GAMMA[cover]));
+        }
+    }
+}
+
 void fx_out(const fx_buf_t buf, uint8_t out[RING_LEDS])
 {
     for (int i = 0; i < RING_LEDS; i++) {

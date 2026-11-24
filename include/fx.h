@@ -96,6 +96,22 @@ uint16_t fx_envelope(int32_t t_ms, uint32_t attack_ms, uint32_t decay_ms);
 void fx_comet(fx_buf_t buf, uint32_t head, int dir, uint32_t tail_leds,
               uint32_t tail_max, uint8_t peak);
 
+/*
+ * A lit arc centred on `center` reaching `half` ring units each way, with
+ * sub-LED soft edges (partial LEDs get proportional light). Max-combined.
+ */
+void fx_arc(fx_buf_t buf, uint32_t center, uint32_t half, uint8_t v);
+
+/*
+ * Gravity along the ring at `pos`: acceleration toward the bottom for a
+ * bead on a vertical hoop, g * sin(angle from top). Same units as g
+ * (e.g. ring units/ms^2 * 4096). Positive = clockwise.
+ */
+static inline int32_t fx_gravity(uint32_t pos, int32_t g)
+{
+    return (g * sin16(ring_to_angle(pos))) >> 15;
+}
+
 /* Clamp to 0..255 into the output buffer. */
 void fx_out(const fx_buf_t buf, uint8_t out[RING_LEDS]);
 

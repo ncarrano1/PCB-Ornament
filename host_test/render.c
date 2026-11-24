@@ -1,6 +1,7 @@
 /*
  * render.c - dump a mode's duty codes for the GIF preview.
- *   render <mode 1..N> <milliseconds>   -> stdout: 40 bytes per frame
+ *   render <mode 1..N> <milliseconds> [skip_ms]  -> stdout: 40 bytes per frame
+ *     (skip_ms: run that long first without output, to preview later parts)
  *   render --list                       -> mode names, one per line
  * Codes are what the engine would actually drive (gamma + cap applied).
  */
@@ -18,15 +19,19 @@ int main(int argc, char **argv)
         for (int m = 0; m < MODE_COUNT; m++) printf("%s\n", MODES[m]->name);
         return 0;
     }
-    if (argc != 3) {
-        fprintf(stderr, "usage: render <mode> <ms> | --list\n");
+    if (argc != 3 && argc != 4) {
+        fprintf(stderr, "usage: render <mode> <ms> [skip_ms] | --list\n");
         return 2;
     }
     int m = atoi(argv[1]) - 1;
     int ms = atoi(argv[2]);
     if (m < 0 || m >= MODE_COUNT) return 2;
+    int skip = argc == 4 ? atoi(argv[3]) : 0;
     core_init(2024, (uint8_t)m);
     uint8_t out[RING_LEDS], code[RING_LEDS];
+    for (int t = 0; t < skip; t += CORE_FRAME_MS) {
+        core_frame(out);
+    }
     for (int t = 0; t < ms; t += CORE_FRAME_MS) {
         core_frame(out);
         ring_codes(out, code);

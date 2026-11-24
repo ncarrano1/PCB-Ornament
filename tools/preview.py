@@ -21,7 +21,15 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 RENDER = os.path.join(ROOT, "host_test", "render")
 OUT_DIR = os.path.join(ROOT, "docs", "previews")
 
-SECONDS = {"default": 10}  # loop length per mode name (seconds)
+# (start, length) in seconds per mode name: some modes play out slowly, so
+# their preview starts part-way in and/or runs longer.
+TIMING = {
+    "default": (0, 10),
+    "snowfall": (8, 16),      # pile building up, then melting
+    "hourglass": (22, 14),    # last grains, pause, turn over, refill
+    "lightning": (0, 14),
+    "fireflies": (0, 18),     # out of sync at first, then in unison
+}
 SIZE = 200                 # GIF width/height, px
 RING_R = 80                # ring radius, px
 DOT_R = 5                  # LED radius, px
@@ -84,9 +92,9 @@ def frame_image(codes, cap):
 
 
 def render_mode(num, name, cap, frame_ms):
-    seconds = SECONDS.get(name, SECONDS["default"])
-    raw = subprocess.run([RENDER, str(num), str(seconds * 1000)], check=True,
-                         capture_output=True).stdout
+    start, seconds = TIMING.get(name, TIMING["default"])
+    raw = subprocess.run([RENDER, str(num), str(seconds * 1000), str(start * 1000)],
+                         check=True, capture_output=True).stdout
     frames = [raw[k:k + LEDS] for k in range(0, len(raw), LEDS)]
     images, durations = [], []
     t = 0.0

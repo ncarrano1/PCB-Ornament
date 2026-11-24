@@ -15,6 +15,15 @@ extern const mode_def_t mode_candle;
 extern const mode_def_t mode_plasma;
 extern const mode_def_t mode_fireworks;
 extern const mode_def_t mode_standing;
+extern const mode_def_t mode_marble;
+extern const mode_def_t mode_snow;
+extern const mode_def_t mode_hourglass;
+extern const mode_def_t mode_lightning;
+extern const mode_def_t mode_fireflies;
+extern const mode_def_t mode_ripples;
+extern const mode_def_t mode_automaton;
+extern const mode_def_t mode_marquee;
+extern const mode_def_t mode_ember;
 
 const mode_def_t *const MODES[] = {
     &mode_wave,    /* 1 */
@@ -28,6 +37,15 @@ const mode_def_t *const MODES[] = {
     &mode_plasma,  /* 9 */
     &mode_fireworks, /* 10 */
     &mode_standing,  /* 11 */
+    &mode_marble,    /* 12 */
+    &mode_snow,      /* 13 */
+    &mode_hourglass, /* 14 */
+    &mode_lightning, /* 15 */
+    &mode_fireflies, /* 16 */
+    &mode_ripples,   /* 17 */
+    &mode_automaton, /* 18 */
+    &mode_marquee,   /* 19 */
+    &mode_ember,     /* 20 */
 };
 
 const uint8_t MODE_COUNT = (uint8_t)(sizeof(MODES) / sizeof(MODES[0]));
