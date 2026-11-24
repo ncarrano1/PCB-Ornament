@@ -98,7 +98,7 @@ def holly(ax, x, y, s=1.0, flip=False):
 
 def ornament_icon(ax, cx, cy, r):
     """The ornament itself: 40 LEDs, D40 at the top, a travelling wave lit."""
-    ax.add_patch(Circle((cx, cy), r * 1.22, fc="#10301b", ec=DKGREEN, lw=1.2, zorder=3))
+    ax.add_patch(Circle((cx, cy), r * 1.22, fc="#b3202a", ec=DKRED, lw=1.2, zorder=3))
     # hanger cap and loop
     ax.add_patch(FancyBboxPatch((cx - 0.075, cy + r * 1.2), 0.15, 0.08,
                                 boxstyle="round,pad=0.01", fc=GOLD, ec="#8a6d12", lw=0.6, zorder=4))
@@ -111,8 +111,8 @@ def ornament_icon(ax, cx, cy, r):
         v = 0.5 + 0.5 * math.cos(math.pi * d / 7) if d < 7 else 0.0
         if v > 0.05:
             ax.add_patch(Circle((x, y), 0.035 + 0.04 * v, fc="#22d35a", ec="none", alpha=0.45 * v, zorder=4))
-        g = (0.30 - 0.20 * v, 0.42 + 0.53 * v, 0.33 - 0.05 * v)
-        ax.add_patch(Circle((x, y), 0.019 + 0.006 * v, fc=g, ec=DKGREEN, lw=0.25, zorder=5))
+        g = (0.90 - 0.80 * v, 0.84 + 0.11 * v, 0.76 - 0.46 * v)
+        ax.add_patch(Circle((x, y), 0.019 + 0.006 * v, fc=g, ec=DKRED, lw=0.25, zorder=5))
 
 
 def candy_frame(ax, x0, y0, w, h):
