@@ -76,8 +76,12 @@ static uint32_t fnv(uint32_t h, const uint8_t *d, int n)
 }
 
 /* Run one mode alone for SIM_MS, checking every frame. Returns output hash. */
+/* Average LED current (mA) of the last run: duty x 5 mA per LED. */
+static double last_ma;
+
 static uint32_t run_mode(int m, uint32_t seed, int *worst_out, int *lit_out)
 {
+    uint64_t code_sum = 0;
     uint8_t out[RING_LEDS], code[RING_LEDS];
     ring_frame_t f;
     uint32_t h = 2166136261u;
@@ -93,8 +97,11 @@ static uint32_t run_mode(int m, uint32_t seed, int *worst_out, int *lit_out)
         int any = 0;
         for (int i = 0; i < RING_LEDS; i++) any |= code[i];
         lit_frames += any != 0;
+        for (int i = 0; i < RING_LEDS; i++) code_sum += code[i];
         h = fnv(h, out, RING_LEDS);
     }
+    /* duty = code / (2 * RING_CODE_MAX): each bank is on half the frame */
+    last_ma = (double)code_sum / SIM_FRAMES / (2.0 * RING_CODE_MAX) * 5.0;
     if (worst_out) *worst_out = worst;
     if (lit_out) *lit_out = lit_frames;
     return h;
@@ -105,13 +112,14 @@ static void test_modes(void)
     for (int m = 0; m < MODE_COUNT; m++) {
         int worst, lit;
         uint32_t h1 = run_mode(m, 1234, &worst, &lit);
+        double ma = last_ma;
         uint32_t h2 = run_mode(m, 1234, NULL, NULL);
         CHECK(h1 == h2, "%s: not deterministic for a fixed seed", MODES[m]->name);
         CHECK(lit > SIM_FRAMES / 2, "%s: dark in %d of %d frames", MODES[m]->name,
               SIM_FRAMES - lit, SIM_FRAMES);
         uint32_t h3 = run_mode(m, 98765, NULL, NULL);
-        printf("  %2d %-13s max %2d LEDs/slice, lit %3d%% of frames, seed-sensitive: %s\n",
-               m + 1, MODES[m]->name, worst, lit * 100 / SIM_FRAMES,
+        printf("  %2d %-13s max %2d LEDs/slice, lit %3d%%, LEDs ~%4.1f mA avg, seed-sensitive: %s\n",
+               m + 1, MODES[m]->name, worst, lit * 100 / SIM_FRAMES, ma,
                h3 != h1 ? "yes" : "no");
     }
 }
